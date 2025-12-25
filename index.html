@@ -28,8 +28,6 @@
     <button id="toggleCamera" style="position: absolute; top: 20px; right: 20px; padding: 10px 20px; background: rgba(0, 255, 136, 0.3); color: white; border: 2px solid #00ff88; border-radius: 5px; cursor: pointer; font-family: monospace; z-index: 1000;">
         Hide Camera [H]
     </button>
-    <div id="colorIndicator" style="position: absolute; top: 80px; right: 20px; width: 40px; height: 200px; border: 2px solid white; border-radius: 10px; background: linear-gradient(to bottom, #ff6b35, #00ff88, #6b5bff); opacity: 0.5; z-index: 1000;"></div>
-    <div id="colorMarker" style="position: absolute; top: 80px; right: 15px; width: 50px; height: 4px; background: white; border-radius: 2px; display: none; z-index: 1001; box-shadow: 0 0 10px white;"></div>
     <div id="container"></div>
     <video id="video" style="position: absolute; bottom: 20px; right: 20px; width: 400px; height: 300px; border: 2px solid #002aff; border-radius: 10px; transform: scaleX(-1);"></video>
     <canvas id="handOverlay"></canvas>
@@ -310,60 +308,11 @@
 
                 const speedFactor = Math.min(speed * 5, 1);
 
-                let baseR = 0.2;
-                let baseG = 0.6;
-                let baseB = 0.9;
-
-                if (leftHand) {
-                    const leftY = leftHand[8].y;
-
-                    if (leftY < 0.33) {
-                        // TOP = WARM (red to yellow)
-                        const warmFactor = 1 - (leftY / 0.33);
-                        baseR = 0.9 + warmFactor * 0.1;  // Red
-                        baseG = 0.3 + warmFactor * 0.5;  // Orange/Yellow
-                        baseB = 0.1;
-                    } else if (leftY < 0.66) {
-                        // MIDDLE = GREEN/CYAN
-                        const midFactor = (leftY - 0.33) / 0.33;
-                        baseR = 0.1;
-                        baseG = 0.7 + midFactor * 0.2;
-                        baseB = 0.5 + midFactor * 0.4;
-                    } else {
-                        // BOTTOM = COOL (blue to purple)
-                        const coolFactor = (leftY - 0.66) / 0.34;
-                        baseR = 0.2 + coolFactor * 0.6;  // Purple
-                        baseG = 0.2;
-                        baseB = 0.9;
-                    }
-                }
-
-                colors[i3] = baseR + speedFactor * 0.3;
-                colors[i3 + 1] = baseG + speedFactor * 0.3;
-                colors[i3 + 2] = baseB;
+                colors[i3] = 0.2 + speedFactor * 0.8;
+                colors[i3 + 1] = 0.4 + speedFactor * 0.6;
+                colors[i3 + 2] = 0.8;
             }
             
-            // Update hand indicators
-            /*if (leftHand) {
-                const leftPos = handToWorld(leftHand[8]);
-                leftIndicator.position.copy(leftPos);
-                leftIndicator.visible = true;
-                leftIndicator.rotation.x += 0.02;
-                leftIndicator.rotation.y += 0.02;
-            } else {
-                leftIndicator.visible = false;
-            }*/
-
-            if (rightHand) {
-                const rightPos = handToWorld(rightHand[8]);
-                rightIndicator.position.copy(rightPos);
-                rightIndicator.visible = true;
-                rightIndicator.rotation.x += 0.02;
-                rightIndicator.rotation.y += 0.02;
-            } else {
-                rightIndicator.visible = false;
-            }
-
             // Update hand indicators
             if (leftHand) {
                 const leftPos = handToWorld(leftHand[8]);
@@ -375,7 +324,15 @@
                 leftIndicator.visible = false;
             }
 
-            updateColorIndicator(); // ADD THIS LINE
+            if (rightHand) {
+                const rightPos = handToWorld(rightHand[8]);
+                rightIndicator.position.copy(rightPos);
+                rightIndicator.visible = true;
+                rightIndicator.rotation.x += 0.02;
+                rightIndicator.rotation.y += 0.02;
+            } else {
+                rightIndicator.visible = false;
+            }
             
             // Update liquid connections between particles
             const connectionDistance = 0.5;
@@ -445,19 +402,6 @@
                 toggleCamera();
             }
         });
-        // Update color indicator position
-        const colorMarker = document.getElementById('colorMarker');
-
-        function updateColorIndicator() {
-            if (leftHand) {
-                const leftY = leftHand[8].y;
-                const markerTop = 80 + (leftY * 200); // Map 0-1 to 80-280px
-                colorMarker.style.top = markerTop + 'px';
-                colorMarker.style.display = 'block';
-            } else {
-                colorMarker.style.display = 'none';
-            }
-        }
     </script>
 </body>
 </html>
