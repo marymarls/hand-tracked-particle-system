@@ -25,7 +25,7 @@
     </style>
 </head>
 <body>
-    <button id="toggleCamera" style="position: absolute; top: 20px; right: 20px; padding: 10px 20px; background: rgba(0, 255, 136, 0.3); color: white; border: 2px solid #00ff88; border-radius: 5px; cursor: pointer; font-family: monospace; z-index: 1000;">
+    <button id="toggleCamera" style="position: absolute; top: 20px; right: 20px; padding: 10px 20px; background: rgba(0, 255, 136, 0.3); color: white; border: 2px solid #00ff88; border-radius: 5px; cursor: pointer; font-family: monospace; z-index: 10000;">
         Hide Camera [H]
     </button>
     <div id="container"></div>
@@ -44,10 +44,9 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('container').appendChild(renderer.domElement);
         camera.position.z = 10;
+        
         const textureLoader = new THREE.TextureLoader();
-        const particleTexture = textureLoader.load(
-        'https://threejs.org/examples/textures/sprites/disc.png'
-        );
+        const particleTexture = textureLoader.load('https://threejs.org/examples/textures/sprites/disc.png');
         
         // Particle system
         const particleCount = 1000;
@@ -91,7 +90,7 @@
         const particleSystem = new THREE.Points(particles, particleMaterial);
         scene.add(particleSystem);
         
-        // Create lines that connect nearby particles (liquid effect)
+        // Create lines that connect nearby particles
         const maxConnections = 3000;
         const linePositions = new Float32Array(maxConnections * 3 * 2);
         const lineGeometry = new THREE.BufferGeometry();
@@ -107,7 +106,7 @@
         const lineSegments = new THREE.LineSegments(lineGeometry, lineMaterial);
         scene.add(lineSegments);
         
-        // Hand position indicators - WHITE WIREFRAME BOXES
+        // Hand position indicators
         const boxGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
 
         const leftIndicator = new THREE.Mesh(
@@ -153,49 +152,34 @@
         });
         
         hands.onResults((results) => {
-            // Clear 2D overlay
             overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-            // Reset hands
             leftHand = null;
             rightHand = null;
 
             if (!results.multiHandLandmarks || !results.multiHandedness) return;
 
-            // Loop through detected hands
             for (let i = 0; i < results.multiHandLandmarks.length; i++) {
                 const hand = results.multiHandLandmarks[i];
                 const handedness = results.multiHandedness[i].label;
 
-                // Assign left / right hand for 3D interaction
                 if (handedness === 'Left') leftHand = hand;
                 if (handedness === 'Right') rightHand = hand;
 
-                // Draw white squares on landmarks (camera overlay)
                 hand.forEach(landmark => {
                     const x = (1 - landmark.x) * overlayCanvas.width;
                     const y = landmark.y * overlayCanvas.height;
-
                     const size = 6;
 
                     overlayCtx.fillStyle = 'white';
-                    overlayCtx.fillRect(
-                        x - size / 2,
-                        y - size / 2,
-                        size,
-                        size
-                    );
+                    overlayCtx.fillRect(x - size / 2, y - size / 2, size, size);
                 });
             }
         });
-
         
         // Setup camera
         const videoElement = document.getElementById('video');
         const overlayCanvas = document.getElementById('handOverlay');
         const overlayCtx = overlayCanvas.getContext('2d');
-
-        // Match video size
         overlayCanvas.width = 400;
         overlayCanvas.height = 300;
 
@@ -208,7 +192,7 @@
         });
         cameraSetup.start();
         
-        // Helper function to convert hand coordinates
+        // Helper function
         function handToWorld(landmark) {
             return new THREE.Vector3(
                 -(landmark.x - 0.5) * 12,
@@ -224,56 +208,51 @@
             const positions = particles.attributes.position.array;
             const colors = particles.attributes.color.array;
             
-            // CONTROL PARAMETERS
             const influenceRadius = 5.0;
             const pushStrength = 0.8;
-            
+
+            // LEFT HAND: Calculate color ONCE before loop
+            let baseR = 0.2;
+            let baseG = 0.6;
+            let baseB = 0.9;
+
+            if (leftHand && leftHand[8]) {
+                const leftY = leftHand[8].y;
+                console.log("Left Y:", leftY);
+                
+                if (leftY < 0.33) {
+                    baseR = 0.9;
+                    baseG = 0.5;
+                    baseB = 0.2;
+                    console.log("WARM");
+                } else if (leftY < 0.66) {
+                    baseR = 0.2;
+                    baseG = 0.8;
+                    baseB = 0.6;
+                    console.log("CYAN");
+                } else {
+                    baseR = 0.4;
+                    baseG = 0.2;
+                    baseB = 0.9;
+                    console.log("COOL");
+                }
+            }
+
             // Update each particle
             for (let i = 0; i < particleCount; i++) {
                 const i3 = i * 3;
                 const particle = new THREE.Vector3(positions[i3], positions[i3 + 1], positions[i3 + 2]);
                 
-                // Apply forces from hands
-                if (leftHand) {
-                    const leftIndex = handToWorld(leftHand[8]);
-                    const distToLeft = particle.distanceTo(leftIndex);
-                    
-                    if (distToLeft < influenceRadius) {
-                        const strength = 1 - (distToLeft / influenceRadius);
-                        
-                        // ATTRACT particles toward hand (they follow it)
-                        const direction = leftIndex.clone().sub(particle).normalize(); // Direction TO hand
-                        const force = direction.multiplyScalar(pushStrength * strength * 0.5); // Gentler pull
-                        velocities[i].add(force);
-                    }
-                }
-                
+                // RIGHT HAND ONLY: Movement
                 if (rightHand) {
                     const rightIndex = handToWorld(rightHand[8]);
                     const distToRight = particle.distanceTo(rightIndex);
                     
                     if (distToRight < influenceRadius) {
                         const strength = 1 - (distToRight / influenceRadius);
-                        
-                        // ATTRACT particles toward hand
                         const direction = rightIndex.clone().sub(particle).normalize();
                         const force = direction.multiplyScalar(pushStrength * strength * 0.5);
                         velocities[i].add(force);
-                    }
-                }
-                
-                // Special: Pull particles between hands when both are visible
-                if (leftHand && rightHand) {
-                    const leftIndex = handToWorld(leftHand[8]);
-                    const rightIndex = handToWorld(rightHand[8]);
-                    const handDistance = leftIndex.distanceTo(rightIndex);
-                    
-                    const midpoint = new THREE.Vector3().addVectors(leftIndex, rightIndex).multiplyScalar(0.5);
-                    const distToMidpoint = particle.distanceTo(midpoint);
-                    
-                    if (distToMidpoint < handDistance * 0.5) {
-                        const pullToLine = midpoint.clone().sub(particle).normalize().multiplyScalar(0.02);
-                        velocities[i].add(pullToLine);
                     }
                 }
                 
@@ -296,21 +275,13 @@
                     velocities[i].z -= positions[i3 + 2] * centerPull;
                 }
                 
-                // Add damping (friction)
+                // Add damping
                 velocities[i].multiplyScalar(0.88);
                 
-                // Update colors based on velocity (speed)
-                const speed = Math.sqrt(
-                    velocities[i].x * velocities[i].x +
-                    velocities[i].y * velocities[i].y +
-                    velocities[i].z * velocities[i].z
-                );
-
-                const speedFactor = Math.min(speed * 5, 1);
-
-                colors[i3] = 0.2 + speedFactor * 0.8;
-                colors[i3 + 1] = 0.4 + speedFactor * 0.6;
-                colors[i3 + 2] = 0.8;
+                // Set color from left hand
+                colors[i3] = baseR;
+                colors[i3 + 1] = baseG;
+                colors[i3 + 2] = baseB;
             }
             
             // Update hand indicators
@@ -334,7 +305,7 @@
                 rightIndicator.visible = false;
             }
             
-            // Update liquid connections between particles
+            // Update liquid connections
             const connectionDistance = 0.5;
             let connectionCount = 0;
 
@@ -364,7 +335,6 @@
                 }
             }
 
-            // Update all geometries ONCE at the end
             lineGeometry.setDrawRange(0, connectionCount * 2);
             lineGeometry.attributes.position.needsUpdate = true;
             particles.attributes.position.needsUpdate = true;
@@ -380,11 +350,11 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-        // Toggle camera visibility for clean recording
+        
+        // Toggle camera
         const toggleBtn = document.getElementById('toggleCamera');
         const video = document.getElementById('video');
         const overlay = document.getElementById('handOverlay');
-
         let cameraVisible = true;
 
         function toggleCamera() {
@@ -395,12 +365,8 @@
         }
 
         toggleBtn.addEventListener('click', toggleCamera);
-
-        // Press 'H' key to toggle
         window.addEventListener('keydown', (e) => {
-            if (e.key === 'h' || e.key === 'H') {
-                toggleCamera();
-            }
+            if (e.key === 'h' || e.key === 'H') toggleCamera();
         });
     </script>
 </body>
