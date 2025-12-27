@@ -58,6 +58,8 @@
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
         const velocities = [];
+        // frozen state for each particle
+        const frozenParticles = [];
         
         // Initialize particles in a sphere shape
         for (let i = 0; i < particleCount; i++) {
@@ -75,6 +77,7 @@
             colors[i3 + 2] = 0.6;
             
             velocities.push(new THREE.Vector3(0, 0, 0));
+            frozenParticles.push(false);  // Not frozen initially
         }
         
         particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -204,6 +207,21 @@
                 -landmark.z * 6
             );
         }
+
+        // Detect if thumb and index finger are pinched together
+        function isPinching(hand) {
+            if (!hand) return false;
+            
+            const thumb = hand[4];  // Thumb tip
+            const index = hand[8];  // Index tip
+            
+            const dx = thumb.x - index.x;
+            const dy = thumb.y - index.y;
+            const dz = thumb.z - index.z;
+            const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            
+            return distance < 0.05;  // Pinched if fingers are close
+        }
         
         // Animation loop
         function animate() {
@@ -214,6 +232,23 @@
             
             const influenceRadius = 5.0;
             const pushStrength = 0.8;
+
+            // LEFT HAND: Unfreeze all if palm is open wide
+            if (leftHand) {
+                // Check if hand is open (measure distance between thumb and pinky)
+                const thumb = leftHand[4];
+                const pinky = leftHand[20];
+                const dx = thumb.x - pinky.x;
+                const dy = thumb.y - pinky.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // If hand is wide open (distance > 0.15), unfreeze everything
+                if (distance > 0.15) {
+                    for (let i = 0; i < particleCount; i++) {
+                        frozenParticles[i] = false;
+                    }
+                }
+            }
 
             // LEFT HAND: Calculate color ONCE before loop
             let baseR = 0.2;
@@ -247,45 +282,73 @@
                 const i3 = i * 3;
                 const particle = new THREE.Vector3(positions[i3], positions[i3 + 1], positions[i3 + 2]);
                 
-                // RIGHT HAND ONLY: Movement
+                // RIGHT HAND: Movement OR Freeze
                 if (rightHand) {
                     const rightIndex = handToWorld(rightHand[8]);
                     const distToRight = particle.distanceTo(rightIndex);
+                    const isPinched = isPinching(rightHand);
                     
                     if (distToRight < influenceRadius) {
-                        const strength = 1 - (distToRight / influenceRadius);
-                        const direction = rightIndex.clone().sub(particle).normalize();
-                        const force = direction.multiplyScalar(pushStrength * strength * 0.5);
-                        velocities[i].add(force);
+                        if (isPinched) {
+                            // PINCH = FREEZE particles nearby
+                            frozenParticles[i] = true;
+                            // Stop all movement
+                            velocities[i].set(0, 0, 0);
+                        } else {
+                            // OPEN HAND = ATTRACT particles (normal movement)
+                            if (!frozenParticles[i]) {  // Only move if not frozen
+                                const strength = 1 - (distToRight / influenceRadius);
+                                const direction = rightIndex.clone().sub(particle).normalize();
+                                const force = direction.multiplyScalar(pushStrength * strength * 0.5);
+                                velocities[i].add(force);
+                            }
+                        }
                     }
                 }
                 
-                // Apply velocity
-                positions[i3] += velocities[i].x;
-                positions[i3 + 1] += velocities[i].y;
-                positions[i3 + 2] += velocities[i].z;
-                
-                // Gentle pull back to center
-                const centerPull = 0.0005;
-                const distanceFromCenter = Math.sqrt(
-                    positions[i3] * positions[i3] + 
-                    positions[i3 + 1] * positions[i3 + 1] + 
-                    positions[i3 + 2] * positions[i3 + 2]
-                );
-                
-                if (distanceFromCenter > 0.1) {
-                    velocities[i].x -= positions[i3] * centerPull;
-                    velocities[i].y -= positions[i3 + 1] * centerPull;
-                    velocities[i].z -= positions[i3 + 2] * centerPull;
+                // Apply velocity ONLY if not frozen
+                if (!frozenParticles[i]) {
+                    positions[i3] += velocities[i].x;
+                    positions[i3 + 1] += velocities[i].y;
+                    positions[i3 + 2] += velocities[i].z;
                 }
                 
-                // Add damping
-                velocities[i].multiplyScalar(0.88);
+                // Gentle pull back to center ONLY if not frozen
+                if (!frozenParticles[i]) {
+                    const centerPull = 0.0005;
+                    const distanceFromCenter = Math.sqrt(
+                        positions[i3] * positions[i3] + 
+                        positions[i3 + 1] * positions[i3 + 1] + 
+                        positions[i3 + 2] * positions[i3 + 2]
+                    );
+                    
+                    if (distanceFromCenter > 0.1) {
+                        velocities[i].x -= positions[i3] * centerPull;
+                        velocities[i].y -= positions[i3 + 1] * centerPull;
+                        velocities[i].z -= positions[i3 + 2] * centerPull;
+                    }
+                    
+                    // Add damping
+                    velocities[i].multiplyScalar(0.88);
+                }
                 
                 // Set color from left hand
                 colors[i3] = baseR;
                 colors[i3 + 1] = baseG;
                 colors[i3 + 2] = baseB;
+
+                // Frozen particles glow white
+                if (frozenParticles[i]) {
+                    colors[i3] = 1.0;
+                    colors[i3 + 1] = 1.0;
+                    colors[i3 + 2] = 1.0;
+                }
+
+                // Vary particle brightness based on depth (Z position)
+                const depthFactor = Math.max(0.3, Math.min(1, 1 - positions[i3 + 2] / 10));
+                colors[i3] *= depthFactor;
+                colors[i3 + 1] *= depthFactor;
+                colors[i3 + 2] *= depthFactor;
             }
             
             // Update hand indicators
