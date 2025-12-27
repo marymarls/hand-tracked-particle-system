@@ -37,6 +37,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     
     <script>
+        // Color transition state (declare FIRST before anything uses it)
+        let targetR = 0.2, targetG = 0.6, targetB = 0.9;
+        let currentR = 0.2, currentG = 0.6, currentB = 0.9;
+
         // Three.js setup
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
