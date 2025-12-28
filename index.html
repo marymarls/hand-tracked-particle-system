@@ -28,6 +28,9 @@
     <button id="toggleCamera" style="position: absolute; top: 20px; right: 20px; padding: 10px 20px; background: rgba(0, 255, 136, 0.3); color: white; border: 2px solid #00ff88; border-radius: 5px; cursor: pointer; font-family: monospace; z-index: 10000;">
         Hide Camera [H]
     </button>
+    <button id="startAudio" style="position: absolute; top: 80px; right: 20px; padding: 10px 20px; background: rgba(255, 100, 100, 0.3); color: white; border: 2px solid #ff6666; border-radius: 5px; cursor: pointer; font-family: monospace; z-index: 10000;">
+        🔊 Start Audio
+    </button>
     <div id="container"></div>
     <video id="video" style="position: absolute; bottom: 20px; right: 20px; width: 400px; height: 300px; border: 2px solid #002aff; border-radius: 10px; transform: scaleX(-1);"></video>
     <canvas id="handOverlay"></canvas>
@@ -35,11 +38,45 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js"></script>
     
     <script>
         // Color transition state (declare FIRST before anything uses it)
         let targetR = 0.2, targetG = 0.6, targetB = 0.9;
         let currentR = 0.2, currentG = 0.6, currentB = 0.9;
+
+        // ===== AUDIO SYSTEM =====
+        let audioStarted = false;
+        let ambientSynth = null;
+        let freezeSynth = null;
+        let unfreezeSynth = null;
+
+        // Initialize synths after Tone.start()
+        function initAudio() {
+            // Simple test synth - MUCH LOUDER
+            ambientSynth = new Tone.Synth({
+                volume: 0,  // Full volume!
+                oscillator: { type: "sine" }
+            }).toDestination();
+
+            // Freeze sound - LOUD
+            freezeSynth = new Tone.Synth({
+                volume: 5,  // Very loud
+                oscillator: { type: "square" }
+            }).toDestination();
+
+            // Unfreeze sound - LOUD
+            unfreezeSynth = new Tone.Synth({
+                volume: 5,  // Very loud
+                oscillator: { type: "triangle" }
+            }).toDestination();
+            
+            console.log("Synths initialized!");
+        }
+
+        let lastFreezeState = false;
+        let lastUnfreezeTime = 0;
+        // ===== AUDIO SYSTEM END =====
 
         // Three.js setup
         const scene = new THREE.Scene();
@@ -179,7 +216,7 @@
         trailGeometry.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
 
         const trailMaterial = new THREE.PointsMaterial({
-            size: 0.08,
+            size: 0.20,
             vertexColors: true,
             transparent: true,
             opacity: 0.6,
@@ -429,6 +466,43 @@
                 colors[i3 + 2] *= depthFactor;
             }
             
+            // ===== SOUND EFFECTS =====
+            if (audioStarted) {
+                // Check if any particles are frozen
+                const anyFrozen = frozenParticles.some(f => f);
+                
+                // Freeze sound (when first particle freezes)
+                if (anyFrozen && !lastFreezeState) {
+                    freezeSynth.triggerAttackRelease("C2", "32n");
+                    lastFreezeState = true;
+                }
+                
+                // Unfreeze sound (when all particles unfreeze)
+                if (!anyFrozen && lastFreezeState) {
+                    const now = Tone.now();
+                    if (now - lastUnfreezeTime > 0.5) {  // Prevent rapid repeating
+                        unfreezeSynth.triggerAttackRelease("C5", "16n");
+                        lastUnfreezeTime = now;
+                    }
+                    lastFreezeState = false;
+                }
+                
+                // Change ambient drone pitch based on color
+                const noteMap = {
+                    warm: ["C2", "E2", "G2"],      // Red/Orange
+                    cyan: ["D2", "F#2", "A2"],     // Cyan/Green
+                    cool: ["Eb2", "G2", "Bb2"]     // Blue/Purple
+                };
+                
+                let currentNotes = noteMap.cyan;
+                if (targetR > 0.7) currentNotes = noteMap.warm;
+                else if (targetB > 0.7) currentNotes = noteMap.cool;
+                
+                // Smoothly transition ambient notes
+                // (This is simplified - full implementation would use Tone.js scheduling)
+            }
+            // ===== SOUND EFFECTS END =====
+
             // Update hand indicators
             if (leftHand) {
                 const leftPos = handToWorld(leftHand[8]);
@@ -609,6 +683,27 @@
         toggleBtn.addEventListener('click', toggleCamera);
         window.addEventListener('keydown', (e) => {
             if (e.key === 'h' || e.key === 'H') toggleCamera();
+        });
+
+        // Start audio system
+        const startAudioBtn = document.getElementById('startAudio');
+        startAudioBtn.addEventListener('click', async () => {
+            if (!audioStarted) {
+                await Tone.start();
+                audioStarted = true;
+                
+                // Initialize synths AFTER Tone.start()
+                initAudio();
+                
+                // Start ambient drone
+                ambientSynth.triggerAttack(["C2", "E2", "G2"]);
+                
+                startAudioBtn.textContent = "🔊 Audio On";
+                startAudioBtn.style.background = "rgba(100, 255, 100, 0.3)";
+                startAudioBtn.style.borderColor = "#66ff66";
+                
+                console.log("Audio started!");
+            }
         });
     </script>
 </body>
